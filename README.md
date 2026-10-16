@@ -16,6 +16,7 @@ Eine mobiloptimierte Webanwendung für den Restaurantservice. Sie läuft ohne Ba
 - **Abrechnen:** Alle offenen Posten, markierte Posten oder einen frei eingegebenen Teilbetrag abrechnen. „Teilbetrag eingeben“ erlaubt einen frei gewählten Zahlbetrag; der Rest bleibt offen und wird auf die ausgewählten Posten angerechnet. Bei mehrfach gebuchten Artikeln kann für die Auswahl eine Stückzahl festgelegt werden. „Betrag teilen“ berechnet einen gleichen Anteil aus dem noch offenen Betrag.
 - **Zahlung:** Ausschließlich Barzahlung. Ist der Rechner aktiviert, kann der gewünschte Kundenbetrag inklusive Trinkgeld sowie das tatsächlich erhaltene Bargeld eingegeben werden. Trinkgeld und Rückgeld werden separat berechnet und Trinkgeld wird separat gespeichert.
 - **Storno:** Mit dem ×-Button am Bonposten kann nach Bestätigung jeweils eine noch offene Portion storniert werden.
+- **Reset:** In den Einstellungen können alle offenen Tischposten und die heutigen Abrechnungen gelöscht werden. Das Passwort ist der heutige Wochentag; Speisekarte, Tischanzahl und Einstellungen bleiben bestehen. Da die App statisch und lokal läuft, ist das eine Bestätigung gegen versehentliche Bedienung und keine echte Zugriffssicherung.
 - **Einstellungen:** Tischanzahl ändern, die Kategorie-Reihenfolge auf dem Bon per Pfeiltasten festlegen, Speisen und Getränke anlegen, bearbeiten oder löschen und den Wechselgeldrechner ein- oder ausschalten.
 
 ## Daten und Grenzen

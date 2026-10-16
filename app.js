@@ -27,7 +27,7 @@
   }
 
   const data = loadData();
-  const ui = { view: 'tables', selectedTable: null, category: 'Alle', booking: null, checkout: null };
+  const ui = { view: 'tables', selectedTable: null, category: 'Alle', booking: null, checkout: null, resetDialog: false };
   const app = document.querySelector('#app');
   const toast = document.querySelector('#toast');
   let toastTimer;
@@ -161,7 +161,18 @@
         </nav>
         ${ui.booking ? renderBooking() : ''}
         ${ui.checkout ? renderCheckout() : ''}
+        ${ui.resetDialog ? renderResetDialog() : ''}
       </div>`;
+  }
+
+  function renderResetDialog() {
+    return `<div class="modal-backdrop reset-backdrop" data-action="reset-backdrop"><form id="reset-form" class="checkout-modal reset-modal" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+      <div class="modal-top"><div><p class="eyebrow reset-eyebrow">ACHTUNG · NICHT RÜCKGÄNGIG</p><h2 id="reset-title">Tagesdaten zurücksetzen?</h2></div><button class="close-button" type="button" data-action="cancel-reset" aria-label="Schließen">×</button></div>
+      <p class="reset-description">Alle offenen Artikel auf sämtlichen Tischen und alle heutigen Abrechnungen inklusive Trinkgeld werden gelöscht. Speisekarte, Tischanzahl und Einstellungen bleiben erhalten.</p>
+      <label class="field-label" for="reset-password">Passwort · heutiger Wochentag</label>
+      <input id="reset-password" name="resetPassword" class="checkout-input" type="password" autocomplete="off" autocapitalize="words" required placeholder="Wochentag eingeben" />
+      <div class="modal-actions"><button class="secondary-button" type="button" data-action="cancel-reset">Abbrechen</button><button class="danger-button" type="submit">Alles zurücksetzen</button></div>
+    </form></div>`;
   }
 
   function renderBooking() {
@@ -247,6 +258,10 @@
         </section>
         <section class="settings-card change-config"><div class="card-title"><span class="settings-icon">€</span><div><h2>Wechselgeld- und Trinkgeldrechner</h2><p>Kundenbetrag inklusive Trinkgeld sowie erhaltenes Bargeld eingeben; Trinkgeld und Rückgeld werden getrennt berechnet.</p></div></div>
           <label class="switch-row"><span><strong>Rechner in der Abrechnung anzeigen</strong><small>Kann jederzeit ein- oder ausgeschaltet werden.</small></span><input id="change-toggle" type="checkbox" role="switch" ${data.changeCalculatorEnabled ? 'checked' : ''} /><span class="switch-track" aria-hidden="true"></span></label>
+        </section>
+        <section class="settings-card reset-config"><div class="card-title"><span class="settings-icon reset-icon">!</span><div><h2>Tagesdaten zurücksetzen</h2><p>Löscht offene Artikel von allen Tischen und die heutigen Abrechnungen. Speisekarte und Tischanzahl bleiben erhalten.</p></div></div>
+          <button class="danger-button reset-open-button" type="button" data-action="open-reset">Reset öffnen</button>
+          <small class="reset-password-hint">Der heutige Wochentag wird als einfache Bestätigung gegen versehentliches Zurücksetzen verlangt.</small>
         </section>
         <section class="settings-card menu-config"><div class="section-heading"><div><h2>Speisekarte</h2><span>${data.menu.length} Artikel in deiner Karte</span></div><span class="menu-count">${data.menu.length}</span></div>
           <div class="menu-list">${menuRows || '<div class="empty-menu">Noch keine Artikel angelegt.</div>'}</div>
@@ -396,6 +411,7 @@
     }
     if (target.dataset.view) {
       ui.booking = null;
+      ui.resetDialog = false;
       ui.view = target.dataset.view;
       ui.selectedTable = null;
       ui.category = 'Alle';
@@ -410,6 +426,13 @@
       render();
     } else if (target.dataset.action === 'cancel-booking' || (target.dataset.action === 'booking-backdrop' && event.target === target)) {
       ui.booking = null;
+      render();
+    } else if (target.dataset.action === 'open-reset') {
+      ui.resetDialog = true;
+      render();
+      document.querySelector('#reset-password')?.focus();
+    } else if (target.dataset.action === 'cancel-reset' || (target.dataset.action === 'reset-backdrop' && event.target === target)) {
+      ui.resetDialog = false;
       render();
     } else if (target.dataset.action === 'backdrop' && event.target === target) {
       ui.checkout = null;
@@ -465,6 +488,11 @@
   });
 
   document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && ui.resetDialog) {
+      ui.resetDialog = false;
+      render();
+      return;
+    }
     if (event.key === 'Escape' && ui.booking) {
       ui.booking = null;
       render();
@@ -533,7 +561,26 @@
   }
 
   document.addEventListener('submit', (event) => {
-    if (event.target.id === 'booking-form') {
+    if (event.target.id === 'reset-form') {
+      event.preventDefault();
+      const password = String(new FormData(event.target).get('resetPassword') || '').trim();
+      const weekday = new Intl.DateTimeFormat('de-DE', { weekday: 'long' }).format(new Date());
+      if (password.normalize('NFC').toLocaleLowerCase('de-DE') !== weekday.normalize('NFC').toLocaleLowerCase('de-DE')) {
+        notify('Passwort nicht korrekt. Gib den heutigen Wochentag ein.');
+        const passwordInput = event.target.querySelector('#reset-password');
+        passwordInput.value = '';
+        passwordInput.focus();
+        return;
+      }
+      const today = new Date().toDateString();
+      data.orders = {};
+      data.payments = data.payments.filter((payment) => new Date(payment.at).toDateString() !== today);
+      save();
+      ui.selectedTable = null;
+      ui.resetDialog = false;
+      render();
+      notify('Alle offenen Tischposten und heutigen Abrechnungen wurden zurückgesetzt.');
+    } else if (event.target.id === 'booking-form') {
       event.preventDefault();
       const product = data.menu.find((item) => item.id === ui.booking?.itemId);
       if (!product || !ui.selectedTable) return;
