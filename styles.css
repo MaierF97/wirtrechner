@@ -87,13 +87,17 @@ h2 { margin: 0; font: 750 18px/1.3 Manrope, sans-serif; letter-spacing: -.4px; }
 .bill-heading .eyebrow { margin-bottom: 6px; }
 .item-count, .menu-count { display: grid; place-items: center; min-width: 27px; height: 27px; padding: 0 7px; border-radius: 9px; background: #f2f4f0; color: #758078; font: 700 11px Manrope, sans-serif; }
 .order-list { padding: 5px 22px 3px; max-height: 305px; overflow-y: auto; }
-.order-row { min-height: 64px; display: flex; align-items: center; gap: 11px; border-bottom: 1px solid #f0f1ed; cursor: pointer; }
+.order-row { min-height: 64px; display: flex; align-items: center; gap: 9px; border-bottom: 1px solid #f0f1ed; }
 .order-row:last-child { border-bottom: 0; }
-.order-row input { width: 16px; height: 16px; margin: 0; accent-color: var(--green); flex: 0 0 auto; }
+.order-row > .line-select { width: 16px; height: 16px; margin: 0; accent-color: var(--green); flex: 0 0 auto; cursor: pointer; }
+.order-row.is-selected { background: #f8fbf8; }
 .order-copy { min-width: 0; display: grid; gap: 4px; }
 .order-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .order-copy small { color: var(--muted); font-size: 10px; }
 .order-comment { overflow-wrap: anywhere; color: #9a6834; font-size: 10px; line-height: 1.35; }
+.order-select-count { display: flex; align-items: center; gap: 4px; color: #7c8780; font-size: 9px; white-space: nowrap; }
+.order-select-count[hidden] { display: none; }
+.order-select-count input { width: 48px; min-height: 32px; border: 1px solid #dfe4de; border-radius: 7px; padding: 0 4px; color: var(--ink); font-size: 12px; text-align: center; }
 .order-price { margin-left: auto; padding-left: 6px; font: 700 12px Manrope, sans-serif; white-space: nowrap; }
 .empty-order { min-height: 208px; display: grid; align-content: center; justify-items: center; padding: 22px; text-align: center; }
 .empty-icon { width: 39px; height: 39px; display: grid; place-items: center; margin-bottom: 12px; border-radius: 12px; color: var(--green); background: var(--green-soft); font-size: 23px; }

@@ -38,8 +38,39 @@
     return Array.isArray(data.orders[number]) ? data.orders[number] : [];
   }
 
+  function normalizeLine(line) {
+    const remainingCents = cents(line.remaining);
+    const quantity = Math.max(1, Math.floor(Number(line.quantity) || 1));
+    const unitsValid = Array.isArray(line.units)
+      && line.units.length === quantity
+      && line.units.every((amount) => Number.isInteger(amount) && amount >= 0)
+      && line.units.reduce((sum, amount) => sum + amount, 0) === remainingCents;
+    if (!unitsValid) {
+      const base = Math.floor(remainingCents / quantity);
+      const extraCents = remainingCents % quantity;
+      line.units = Array.from({ length: quantity }, (_, index) => base + (index < extraCents ? 1 : 0));
+    }
+    line.units = line.units.filter((amount) => amount > 0);
+    line.quantity = line.units.length;
+    line.remaining = fromCents(line.units.reduce((sum, amount) => sum + amount, 0));
+  }
+
   function openLines(number) {
-    return linesFor(number).filter((line) => cents(line.remaining) > 0);
+    return linesFor(number).filter((line) => {
+      normalizeLine(line);
+      return line.units.length > 0;
+    });
+  }
+
+  function checkoutLines(checkout, open) {
+    const allSelected = checkout.mode === 'all' || checkout.mode === 'split';
+    return open
+      .filter((line) => allSelected || checkout.ids.includes(line.id))
+      .map((line) => {
+        const requested = allSelected ? line.units.length : Number(checkout.quantities?.[line.id] || 1);
+        const units = line.units.slice(0, Math.max(1, Math.min(line.units.length, requested)));
+        return { ...line, units, quantity: units.length, remaining: fromCents(units.reduce((sum, amount) => sum + amount, 0)) };
+      });
   }
 
   function totalFor(number) {
@@ -114,11 +145,12 @@
     const shownMenu = data.menu.filter((item) => ui.category === 'Alle' || item.category === ui.category);
     const productCards = shownMenu.map((item) => `<button class="product-card" data-add-item="${escapeHtml(item.id)}" ${!item.id ? 'disabled' : ''}>
       <span class="product-category">${escapeHtml(item.category || 'Sonstiges')}</span><strong>${escapeHtml(item.name)}</strong><span class="product-card-bottom"><b>${euro(item.price)}</b><span class="add-symbol" aria-hidden="true">+</span></span></button>`).join('');
-    const lineRows = open.map((line) => `<label class="order-row">
+    const lineRows = open.map((line) => `<div class="order-row">
       <input type="checkbox" class="line-select" value="${escapeHtml(line.id)}" aria-label="${escapeHtml(line.name)} zur Abrechnung auswählen" />
       <span class="order-copy"><strong>${escapeHtml(line.name)}</strong><small>${line.quantity} × ${euro(line.price)}${cents(line.remaining) < cents(line.price * line.quantity) ? ` · Restwert ${euro(line.remaining)}` : ''}</small>${line.comment ? `<span class="order-comment">${escapeHtml(line.comment)}</span>` : ''}</span>
+      ${line.quantity > 1 ? `<label class="order-select-count" hidden>Anzahl <input class="line-select-quantity" type="number" min="1" max="${line.quantity}" value="1" aria-label="Anzahl ${escapeHtml(line.name)} zur Abrechnung" /></label>` : ''}
       <b class="order-price">${euro(line.remaining)}</b>
-    </label>`).join('');
+    </div>`).join('');
     return `<div class="detail-top"><button class="back-button" data-action="back"><span aria-hidden="true">←</span> Alle Tische</button><span class="date-label">${new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</span></div>
       <section class="table-title-row"><div><p class="eyebrow">TISCHÜBERSICHT</p><h1>${tableName(number)}</h1><p class="heading-subtitle">Bestellungen direkt am Tisch ergänzen.</p></div><span class="table-badge ${open.length ? 'badge-open' : ''}"><i></i>${open.length ? 'Offen' : 'Noch frei'}</span></section>
       <div class="detail-layout">
@@ -131,7 +163,7 @@
           <div class="bill-footer"><div class="bill-total"><span>Offener Betrag</span><strong>${euro(totalFor(number))}</strong></div>
             <button class="primary-button full-width" data-checkout="all" ${open.length ? '' : 'disabled'}><span>Alles abrechnen</span><span aria-hidden="true">→</span></button>
             <div class="secondary-actions"><button class="secondary-button" data-checkout="selected" ${open.length ? '' : 'disabled'}>Auswahl abrechnen</button><button class="secondary-button" data-checkout="split" ${open.length ? '' : 'disabled'}>Betrag teilen</button></div>
-            <p class="bill-hint">Posten links markieren, um nur diese abzurechnen.</p>
+            <p class="bill-hint">Posten markieren; bei mehreren Stück kannst du die Auswahlmenge setzen.</p>
           </div>
         </aside>
       </div>`;
@@ -164,9 +196,7 @@
   function renderCheckout() {
     const checkout = ui.checkout;
     const allOpen = openLines(ui.selectedTable);
-    const selected = checkout.mode === 'all' || checkout.mode === 'split'
-      ? allOpen
-      : allOpen.filter((line) => checkout.ids.includes(line.id));
+    const selected = checkoutLines(checkout, allOpen);
     const payableCents = selected.reduce((sum, line) => sum + cents(line.remaining), 0);
     const parts = Math.max(1, Number(checkout.parts) || 1);
     const amountCents = checkout.mode === 'split' ? Math.ceil(payableCents / parts) : payableCents;
@@ -193,11 +223,22 @@
   }
 
   function openCheckout(mode) {
-    const selectedIds = Array.from(document.querySelectorAll('.line-select:checked')).map((input) => input.value);
+    const checkedRows = Array.from(document.querySelectorAll('.line-select:checked'));
+    const selectedIds = checkedRows.map((input) => input.value);
     if (mode === 'selected' && selectedIds.length === 0) return notify('Markiere zuerst mindestens einen offenen Posten.');
-    const initialLines = mode === 'selected' ? openLines(ui.selectedTable).filter((line) => selectedIds.includes(line.id)) : openLines(ui.selectedTable);
-    const total = fromCents(initialLines.reduce((sum, line) => sum + cents(line.remaining), 0));
-    ui.checkout = { mode, ids: initialLines.map((line) => line.id), parts: 2, amount: total.toFixed(2), tendered: '' };
+    const open = openLines(ui.selectedTable);
+    const initialLines = mode === 'selected' ? open.filter((line) => selectedIds.includes(line.id)) : open;
+    const quantities = Object.fromEntries(checkedRows.map((input) => {
+      const selectedCount = input.closest('.order-row').querySelector('.line-select-quantity');
+      return [input.value, mode === 'selected' ? Number(selectedCount?.value || 1) : open.find((line) => line.id === input.value)?.quantity || 1];
+    }));
+    if (mode !== 'selected') {
+      for (const line of initialLines) quantities[line.id] = line.quantity;
+    }
+    const selection = { mode, ids: initialLines.map((line) => line.id), quantities };
+    const selectedLines = checkoutLines(selection, initialLines);
+    const total = fromCents(selectedLines.reduce((sum, line) => sum + cents(line.remaining), 0));
+    ui.checkout = { ...selection, parts: 2, amount: total.toFixed(2), tendered: '' };
     render();
     document.querySelector('.checkout-modal')?.focus();
   }
@@ -206,9 +247,7 @@
     const checkout = ui.checkout;
     if (!checkout) return;
     const open = openLines(ui.selectedTable);
-    const selected = checkout.mode === 'all' || checkout.mode === 'split'
-      ? open
-      : open.filter((line) => checkout.ids.includes(line.id));
+    const selected = checkoutLines(checkout, open);
     const maxCents = selected.reduce((sum, line) => sum + cents(line.remaining), 0);
     let amountCents = checkout.mode === 'amount'
       ? cents(checkout.amount)
@@ -219,11 +258,17 @@
     if (data.changeCalculatorEnabled && cents(checkout.tendered) < amountCents) return notify('Der erhaltene Betrag reicht noch nicht aus.');
 
     let outstanding = amountCents;
-    for (const line of selected) {
-      const lineDue = cents(line.remaining);
-      const applied = Math.min(lineDue, outstanding);
-      line.remaining = fromCents(lineDue - applied);
-      outstanding -= applied;
+    for (const selectedLine of selected) {
+      const line = open.find((entry) => entry.id === selectedLine.id);
+      if (!line) continue;
+      for (let index = 0; index < selectedLine.units.length && outstanding > 0; index += 1) {
+        const applied = Math.min(line.units[index], outstanding);
+        line.units[index] -= applied;
+        outstanding -= applied;
+      }
+      line.units = line.units.filter((amount) => amount > 0);
+      line.quantity = line.units.length;
+      line.remaining = fromCents(line.units.reduce((sum, amount) => sum + amount, 0));
       if (outstanding === 0) break;
     }
     data.payments.push({ id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`, table: ui.selectedTable, amount: fromCents(amountCents), method: 'Bar', at: new Date().toISOString() });
@@ -316,7 +361,15 @@
   });
 
   document.addEventListener('change', (event) => {
-    if (event.target.id === 'change-toggle') {
+    if (event.target.matches('.line-select')) {
+      const row = event.target.closest('.order-row');
+      const count = row.querySelector('.order-select-count');
+      if (count) count.hidden = !event.target.checked;
+      row.classList.toggle('is-selected', event.target.checked);
+    } else if (event.target.matches('.line-select-quantity')) {
+      const max = Number(event.target.max) || 1;
+      event.target.value = String(Math.max(1, Math.min(max, Number(event.target.value) || 1)));
+    } else if (event.target.id === 'change-toggle') {
       data.changeCalculatorEnabled = event.target.checked;
       save(); render();
       notify(`Wechselgeldrechner ${data.changeCalculatorEnabled ? 'aktiviert' : 'deaktiviert'}.`);
@@ -329,7 +382,7 @@
     const display = modal.querySelector('.checkout-total strong');
     const changeOutput = modal.querySelector('.change-result strong');
     const open = openLines(ui.selectedTable);
-    const selected = ui.checkout.mode === 'all' || ui.checkout.mode === 'split' ? open : open.filter((line) => ui.checkout.ids.includes(line.id));
+    const selected = checkoutLines(ui.checkout, open);
     const due = selected.reduce((sum, line) => sum + cents(line.remaining), 0);
     const amount = ui.checkout.mode === 'amount' ? Number(ui.checkout.amount) : ui.checkout.mode === 'split' ? fromCents(Math.ceil(due / Math.max(1, Number(ui.checkout.parts) || 1))) : fromCents(due);
     if (display) display.textContent = euro(amount);
@@ -344,13 +397,19 @@
       const product = data.menu.find((item) => item.id === ui.booking?.itemId);
       if (!product || !ui.selectedTable) return;
       const comment = String(new FormData(event.target).get('comment') || '').trim();
+      openLines(ui.selectedTable);
       const lines = linesFor(ui.selectedTable);
-      const existing = lines.find((line) => line.menuId === product.id && (line.comment || '') === comment && cents(line.remaining) === cents(line.price * line.quantity));
+      const priceCents = cents(product.price);
+      const existing = lines.find((line) => line.menuId === product.id
+        && (line.comment || '') === comment
+        && line.units.length > 0
+        && line.units.every((amount) => amount === priceCents));
       if (existing) {
-        existing.quantity += 1;
-        existing.remaining = fromCents(cents(existing.remaining) + cents(product.price));
+        existing.units.push(priceCents);
+        existing.quantity = existing.units.length;
+        existing.remaining = fromCents(existing.units.reduce((sum, amount) => sum + amount, 0));
       } else {
-        lines.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, menuId: product.id, name: product.name, price: Number(product.price), quantity: 1, remaining: Number(product.price), comment });
+        lines.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, menuId: product.id, name: product.name, price: Number(product.price), quantity: 1, remaining: Number(product.price), units: [priceCents], comment });
       }
       data.orders[ui.selectedTable] = lines;
       save();
