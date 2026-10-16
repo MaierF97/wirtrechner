@@ -141,7 +141,7 @@
   function render() {
     const dailyRevenue = data.payments
       .filter((payment) => new Date(payment.at).toDateString() === new Date().toDateString())
-      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+      .reduce((sum, payment) => sum + Number(payment.amount || 0) + Number(payment.tip || 0), 0);
 
     app.innerHTML = `
       <div class="app-shell">
@@ -200,15 +200,16 @@
     const productCards = shownMenu.map((item) => `<div class="product-card">
       <button class="product-quick-area" type="button" data-add-item="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.name)} direkt buchen">
         <span class="product-category">${escapeHtml(item.category || 'Sonstiges')}</span><strong>${escapeHtml(item.name)}</strong>
-        <span class="product-card-bottom"><b>${euro(item.price)}</b><span class="add-symbol" aria-hidden="true">+</span></span>
+        <span class="product-card-bottom"><b>${euro(item.price)}</b><span class="add-action"><span class="add-symbol" aria-hidden="true">+</span><span>Direkt</span></span></span>
       </button>
-      <button class="product-note-button" type="button" data-add-note="${escapeHtml(item.id)}" aria-label="Kommentar für ${escapeHtml(item.name)} hinzufügen"><span aria-hidden="true">✎</span> Notiz</button>
+      <button class="product-note-button" type="button" data-add-note="${escapeHtml(item.id)}" aria-label="Kommentar für ${escapeHtml(item.name)} hinzufügen"><span aria-hidden="true">✎</span> Mit Notiz</button>
     </div>`).join('');
     const lineRows = open.map((line) => `<div class="order-row">
       <input type="checkbox" class="line-select" value="${escapeHtml(line.id)}" aria-label="${escapeHtml(line.name)} zur Abrechnung auswählen" />
       <span class="order-copy"><strong>${escapeHtml(line.name)}</strong><small>${line.quantity} × ${euro(line.price)}${cents(line.remaining) < cents(line.price * line.quantity) ? ` · Restwert ${euro(line.remaining)}` : ''}</small>${line.comment ? `<span class="order-comment">${escapeHtml(line.comment)}</span>` : ''}</span>
       ${line.quantity > 1 ? `<label class="order-select-count" hidden>Anzahl <input class="line-select-quantity" type="number" min="1" max="${line.quantity}" value="1" aria-label="Anzahl ${escapeHtml(line.name)} zur Abrechnung" /></label>` : ''}
       <b class="order-price">${euro(line.remaining)}</b>
+      <button class="cancel-line-button" type="button" data-cancel-line="${escapeHtml(line.id)}" aria-label="Eine Portion ${escapeHtml(line.name)} stornieren" title="Eine Portion stornieren">×</button>
     </div>`).join('');
     return `<div class="detail-top"><button class="back-button" data-action="back"><span aria-hidden="true">←</span> Alle Tische</button><span class="date-label">${new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</span></div>
       <section class="table-title-row"><div><p class="eyebrow">TISCHÜBERSICHT</p><h1>${tableName(number)}</h1><p class="heading-subtitle">Bestellungen direkt am Tisch ergänzen.</p></div><span class="table-badge ${open.length ? 'badge-open' : ''}"><i></i>${open.length ? 'Offen' : 'Noch frei'}</span></section>
@@ -244,7 +245,7 @@
         <section class="settings-card category-order-config"><div class="card-title"><span class="settings-icon">↕</span><div><h2>Reihenfolge auf dem Bon</h2><p>Lege fest, in welcher Reihenfolge Speisen und Getränke im laufenden Bon erscheinen.</p></div></div>
           <ol class="category-order-list">${normalizeCategoryOrder(data.categoryOrder).map((category, index, order) => `<li class="category-order-item"><span class="category-order-position">${index + 1}</span><strong>${category}</strong><div class="category-order-actions"><button class="order-move-button" type="button" data-move-category="${category}" data-direction="up" aria-label="${category} nach oben verschieben" ${index === 0 ? 'disabled' : ''}>↑</button><button class="order-move-button" type="button" data-move-category="${category}" data-direction="down" aria-label="${category} nach unten verschieben" ${index === order.length - 1 ? 'disabled' : ''}>↓</button></div></li>`).join('')}</ol>
         </section>
-        <section class="settings-card change-config"><div class="card-title"><span class="settings-icon">€</span><div><h2>Wechselgeldrechner</h2><p>Bar erhaltenen Betrag eingeben und Rückgeld automatisch berechnen.</p></div></div>
+        <section class="settings-card change-config"><div class="card-title"><span class="settings-icon">€</span><div><h2>Wechselgeld- und Trinkgeldrechner</h2><p>Kundenbetrag inklusive Trinkgeld sowie erhaltenes Bargeld eingeben; Trinkgeld und Rückgeld werden getrennt berechnet.</p></div></div>
           <label class="switch-row"><span><strong>Rechner in der Abrechnung anzeigen</strong><small>Kann jederzeit ein- oder ausgeschaltet werden.</small></span><input id="change-toggle" type="checkbox" role="switch" ${data.changeCalculatorEnabled ? 'checked' : ''} /><span class="switch-track" aria-hidden="true"></span></label>
         </section>
         <section class="settings-card menu-config"><div class="section-heading"><div><h2>Speisekarte</h2><span>${data.menu.length} Artikel in deiner Karte</span></div><span class="menu-count">${data.menu.length}</span></div>
@@ -266,8 +267,13 @@
     const safeAmount = Number.isFinite(amount) ? Math.max(0, amount) : 0;
     const changeEnabled = data.changeCalculatorEnabled;
     const tendered = Number(checkout.tendered) || 0;
-    const change = Math.max(0, cents(tendered) - cents(safeAmount)) / 100;
-    const isValid = safeAmount > 0 && cents(safeAmount) <= payableCents && (!changeEnabled || tendered >= safeAmount);
+    const customerTotalInput = Number(checkout.customerTotal);
+    const customerTotal = checkout.customerTotal !== '' && Number.isFinite(customerTotalInput)
+      ? Math.max(cents(safeAmount), cents(customerTotalInput))
+      : cents(safeAmount);
+    const tip = fromCents(customerTotal - cents(safeAmount));
+    const change = Math.max(0, cents(tendered) - customerTotal) / 100;
+    const isValid = safeAmount > 0 && cents(safeAmount) <= payableCents && (!changeEnabled || cents(tendered) >= customerTotal);
     const modeLabel = checkout.mode === 'all' ? 'Alles abrechnen' : checkout.mode === 'split' ? 'Betrag teilen' : checkout.mode === 'amount' ? 'Teilbetrag abrechnen' : 'Auswahl abrechnen';
     return `<div class="modal-backdrop" data-action="backdrop"><section class="checkout-modal" role="dialog" aria-modal="true" aria-labelledby="checkout-title" tabindex="-1">
       <div class="modal-top"><div><p class="eyebrow">${tableName(ui.selectedTable).toUpperCase()}</p><h2 id="checkout-title">${modeLabel}</h2></div><button class="close-button" data-action="close-checkout" aria-label="Schließen">×</button></div>
@@ -277,7 +283,7 @@
         ${checkout.mode === 'split' ? `<label class="field-label" for="split-parts">In wie viele gleiche Anteile teilen?</label><input id="split-parts" class="checkout-input" type="number" min="1" max="99" value="${parts}" />` : ''}
         <button class="mode-switch" data-checkout-mode="amount">Teilbetrag eingeben <span aria-hidden="true">→</span></button>
         ${checkout.mode === 'amount' ? `<label class="field-label" for="custom-amount">Teilbetrag (€)</label><input id="custom-amount" class="checkout-input" type="number" min="0.01" max="${(payableCents / 100).toFixed(2)}" step="0.01" value="${Number(checkout.amount || payableCents / 100).toFixed(2)}" />` : ''}
-        ${changeEnabled ? `<div class="change-box"><label class="field-label" for="cash-tendered">Erhalten (€)</label><input id="cash-tendered" class="checkout-input" type="number" min="0" step="0.01" placeholder="Betrag eingeben" value="${checkout.tendered || ''}" /><div class="change-result"><span>Rückgeld</span><strong>${euro(change)}</strong></div></div>` : ''}
+        ${changeEnabled ? `<div class="change-box"><label class="field-label" for="customer-total">Kunde sagt (inkl. Trinkgeld, €)</label><input id="customer-total" class="checkout-input" type="number" min="${safeAmount.toFixed(2)}" step="0.01" placeholder="z. B. ${euro(safeAmount)}" value="${checkout.customerTotal || ''}" /><small class="cash-hint">Zum Beispiel „20 €“ bei einem offenen Betrag von 18 €: 2 € Trinkgeld.</small><div class="tip-result"><span>Enthaltenes Trinkgeld</span><strong>${euro(tip)}</strong></div><label class="field-label cash-received-label" for="cash-tendered">Bargeld tatsächlich erhalten (€)</label><input id="cash-tendered" class="checkout-input" type="number" min="0" step="0.01" placeholder="Gegebenen Betrag eingeben" value="${checkout.tendered || ''}" /><div class="change-result"><span>Rückgeld</span><strong>${euro(change)}</strong></div></div>` : ''}
       </div>
       <div class="modal-actions"><button class="secondary-button" data-action="close-checkout">Abbrechen</button><button class="primary-button" data-action="confirm-payment" ${isValid ? '' : 'disabled'}>Zahlung buchen <span aria-hidden="true">→</span></button></div>
       ${checkout.mode !== 'all' ? '<p class="modal-footnote">Der Restbetrag bleibt am Tisch offen und kann später abgerechnet werden.</p>' : ''}
@@ -300,7 +306,7 @@
     const selection = { mode, ids: initialLines.map((line) => line.id), quantities };
     const selectedLines = checkoutLines(selection, initialLines);
     const total = fromCents(selectedLines.reduce((sum, line) => sum + cents(line.remaining), 0));
-    ui.checkout = { ...selection, parts: 2, amount: total.toFixed(2), tendered: '' };
+    ui.checkout = { ...selection, parts: 2, amount: total.toFixed(2), customerTotal: '', tendered: '' };
     render();
     document.querySelector('.checkout-modal')?.focus();
   }
@@ -316,8 +322,11 @@
       : checkout.mode === 'split'
         ? Math.ceil(maxCents / Math.max(1, Number(checkout.parts) || 1))
         : maxCents;
-    if (amountCents < 1 || amountCents > maxCents) return notify('Der Zahlbetrag muss innerhalb der offenen Summe liegen.');
-    if (data.changeCalculatorEnabled && cents(checkout.tendered) < amountCents) return notify('Der erhaltene Betrag reicht noch nicht aus.');
+    if (!Number.isFinite(amountCents) || amountCents < 1 || amountCents > maxCents) return notify('Der Zahlbetrag muss innerhalb der offenen Summe liegen.');
+    const customerTotalInput = checkout.customerTotal === '' ? amountCents : cents(checkout.customerTotal);
+    if (!Number.isFinite(customerTotalInput)) return notify('Bitte gib einen gültigen Kundenbetrag ein.');
+    const customerTotalCents = Math.max(amountCents, customerTotalInput);
+    if (data.changeCalculatorEnabled && cents(checkout.tendered) < customerTotalCents) return notify('Das erhaltene Bargeld reicht für den genannten Betrag noch nicht aus.');
 
     let outstanding = amountCents;
     for (const selectedLine of selected) {
@@ -333,7 +342,7 @@
       line.remaining = fromCents(line.units.reduce((sum, amount) => sum + amount, 0));
       if (outstanding === 0) break;
     }
-    data.payments.push({ id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`, table: ui.selectedTable, amount: fromCents(amountCents), method: 'Bar', at: new Date().toISOString() });
+    data.payments.push({ id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`, table: ui.selectedTable, amount: fromCents(amountCents), tip: fromCents(customerTotalCents - amountCents), method: 'Bar', at: new Date().toISOString() });
     save();
     ui.checkout = null;
     notify(`${euro(fromCents(amountCents))} für ${tableName(ui.selectedTable)} gebucht.`);
@@ -433,6 +442,17 @@
       save();
       render();
       notify('Bon-Reihenfolge gespeichert.');
+    } else if (target.dataset.cancelLine) {
+      const line = linesFor(ui.selectedTable).find((entry) => entry.id === target.dataset.cancelLine);
+      if (!line) return;
+      normalizeLine(line);
+      if (!confirm(`Eine Portion „${line.name}“${line.quantity > 1 ? ` (von ${line.quantity})` : ''} auf ${tableName(ui.selectedTable)} stornieren?`)) return;
+      line.units.pop();
+      line.quantity = line.units.length;
+      line.remaining = fromCents(line.units.reduce((sum, amount) => sum + amount, 0));
+      save();
+      render();
+      notify(`Eine Portion ${line.name} wurde storniert.`);
     } else if (target.dataset.deleteItem) {
       const itemId = target.dataset.deleteItem;
       const inUse = Object.values(data.orders).flat().some((line) => line.menuId === itemId && cents(line.remaining) > 0);
@@ -467,6 +487,9 @@
     } else if (target.id === 'custom-amount') {
       ui.checkout.amount = target.value;
       updateCheckoutSummary();
+    } else if (target.id === 'customer-total') {
+      ui.checkout.customerTotal = target.value;
+      updateCheckoutSummary();
     } else if (target.id === 'cash-tendered') {
       ui.checkout.tendered = target.value;
       updateCheckoutSummary();
@@ -493,15 +516,20 @@
     const modal = document.querySelector('.checkout-modal');
     if (!modal || !ui.checkout) return;
     const display = modal.querySelector('.checkout-total strong');
+    const tipOutput = modal.querySelector('.tip-result strong');
     const changeOutput = modal.querySelector('.change-result strong');
     const open = orderedOpenLines(ui.selectedTable);
     const selected = checkoutLines(ui.checkout, open);
     const due = selected.reduce((sum, line) => sum + cents(line.remaining), 0);
     const amount = ui.checkout.mode === 'amount' ? Number(ui.checkout.amount) : ui.checkout.mode === 'split' ? fromCents(Math.ceil(due / Math.max(1, Number(ui.checkout.parts) || 1))) : fromCents(due);
+    const amountCents = cents(amount);
+    const statedInput = ui.checkout.customerTotal === '' ? amountCents : cents(ui.checkout.customerTotal);
+    const customerTotalCents = Math.max(amountCents, statedInput);
     if (display) display.textContent = euro(amount);
-    if (changeOutput) changeOutput.textContent = euro(Math.max(0, cents(ui.checkout.tendered) - cents(amount)) / 100);
+    if (tipOutput) tipOutput.textContent = euro(fromCents(customerTotalCents - amountCents));
+    if (changeOutput) changeOutput.textContent = euro(Math.max(0, cents(ui.checkout.tendered) - customerTotalCents) / 100);
     const button = modal.querySelector('[data-action="confirm-payment"]');
-    if (button) button.disabled = !(amount > 0 && cents(amount) <= due && (!data.changeCalculatorEnabled || cents(ui.checkout.tendered) >= cents(amount)));
+    if (button) button.disabled = !(Number.isFinite(amountCents) && Number.isFinite(customerTotalCents) && amount > 0 && amountCents <= due && (!data.changeCalculatorEnabled || cents(ui.checkout.tendered) >= customerTotalCents));
   }
 
   document.addEventListener('submit', (event) => {

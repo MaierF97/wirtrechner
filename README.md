@@ -12,9 +12,10 @@ Eine mobiloptimierte Webanwendung für den Restaurantservice. Sie läuft ohne Ba
 
 ## Bedienung
 
-- **Tische:** Ein Artikel wird beim Antippen direkt gebucht. Für einen Kommentar wie „ohne Zwiebeln“ oder „mit stillem Wasser“ den Stift-Button antippen oder den Artikel lange drücken. Der Kommentar bleibt am jeweiligen Bonposten sichtbar.
-- **Abrechnen:** Alle offenen Posten, markierte Posten oder einen frei eingegebenen Teilbetrag abrechnen. Bei mehrfach gebuchten Artikeln kann für die Auswahl eine Stückzahl festgelegt werden. „Betrag teilen“ berechnet einen gleichen Anteil aus dem noch offenen Betrag.
-- **Zahlung:** Ausschließlich Barzahlung. Der optionale Wechselgeldrechner zeigt bei Eingabe des erhaltenen Betrags das Rückgeld an.
+- **Tische:** Im oberen, grünen Bereich der Artikelkachel wird ein Artikel direkt gebucht. Der farbig markierte untere Bereich **Mit Notiz** öffnet den Kommentardialog; alternativ den oberen Bereich lange drücken. Der Kommentar bleibt am jeweiligen Bonposten sichtbar.
+- **Abrechnen:** Alle offenen Posten, markierte Posten oder einen frei eingegebenen Teilbetrag abrechnen. „Teilbetrag eingeben“ erlaubt einen frei gewählten Zahlbetrag; der Rest bleibt offen und wird auf die ausgewählten Posten angerechnet. Bei mehrfach gebuchten Artikeln kann für die Auswahl eine Stückzahl festgelegt werden. „Betrag teilen“ berechnet einen gleichen Anteil aus dem noch offenen Betrag.
+- **Zahlung:** Ausschließlich Barzahlung. Ist der Rechner aktiviert, kann der gewünschte Kundenbetrag inklusive Trinkgeld sowie das tatsächlich erhaltene Bargeld eingegeben werden. Trinkgeld und Rückgeld werden separat berechnet und Trinkgeld wird separat gespeichert.
+- **Storno:** Mit dem ×-Button am Bonposten kann nach Bestätigung jeweils eine noch offene Portion storniert werden.
 - **Einstellungen:** Tischanzahl ändern, die Kategorie-Reihenfolge auf dem Bon per Pfeiltasten festlegen, Speisen und Getränke anlegen, bearbeiten oder löschen und den Wechselgeldrechner ein- oder ausschalten.
 
 ## Daten und Grenzen
