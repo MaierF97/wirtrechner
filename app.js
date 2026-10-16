@@ -1,5 +1,12 @@
 (() => {
   const STORAGE_KEY = 'wirtwerk-data-v1';
+  const ORDER_CATEGORIES = ['Speisen', 'Getränke', 'Dessert', 'Sonstiges'];
+
+  function normalizeCategoryOrder(order) {
+    const validOrder = Array.isArray(order) ? order.filter((category) => ORDER_CATEGORIES.includes(category)) : [];
+    return [...new Set(validOrder), ...ORDER_CATEGORIES.filter((category) => !validOrder.includes(category))];
+  }
+
   function loadData() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -7,6 +14,7 @@
         return {
           menu: saved.menu.filter((item) => !/^m[1-8]$/.test(item.id)),
           tableCount: Math.min(60, Math.max(1, saved.tableCount)),
+          categoryOrder: normalizeCategoryOrder(saved.categoryOrder),
           changeCalculatorEnabled: saved.changeCalculatorEnabled !== false,
           orders: saved.orders && typeof saved.orders === 'object' ? saved.orders : {},
           payments: Array.isArray(saved.payments) ? saved.payments : [],
@@ -15,7 +23,7 @@
     } catch (error) {
       console.warn('Gespeicherte Daten konnten nicht geladen werden.', error);
     }
-    return { menu: [], tableCount: 12, changeCalculatorEnabled: true, orders: {}, payments: [] };
+    return { menu: [], tableCount: 12, categoryOrder: [...ORDER_CATEGORIES], changeCalculatorEnabled: true, orders: {}, payments: [] };
   }
 
   const data = loadData();
@@ -66,6 +74,19 @@
     });
   }
 
+  function orderedOpenLines(number) {
+    const order = normalizeCategoryOrder(data.categoryOrder);
+    const rank = new Map(order.map((category, index) => [category, index]));
+    return openLines(number)
+      .map((line, index) => ({ line, index }))
+      .sort((first, second) => {
+        const firstCategory = first.line.category || data.menu.find((item) => item.id === first.line.menuId)?.category || 'Sonstiges';
+        const secondCategory = second.line.category || data.menu.find((item) => item.id === second.line.menuId)?.category || 'Sonstiges';
+        return (rank.get(firstCategory) ?? order.length) - (rank.get(secondCategory) ?? order.length) || first.index - second.index;
+      })
+      .map(({ line }) => line);
+  }
+
   function checkoutLines(checkout, open) {
     const allSelected = checkout.mode === 'all' || checkout.mode === 'split';
     return open
@@ -109,7 +130,7 @@
       existing.quantity = existing.units.length;
       existing.remaining = fromCents(existing.units.reduce((sum, amount) => sum + amount, 0));
     } else {
-      lines.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, menuId: product.id, name: product.name, price: Number(product.price), quantity: 1, remaining: Number(product.price), units: [priceCents], comment });
+        lines.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, menuId: product.id, name: product.name, price: Number(product.price), category: product.category || 'Sonstiges', quantity: 1, remaining: Number(product.price), units: [priceCents], comment });
     }
     data.orders[ui.selectedTable] = lines;
     save();
@@ -173,7 +194,7 @@
   }
 
   function renderTableDetail(number) {
-    const open = openLines(number);
+    const open = orderedOpenLines(number);
     const categories = ['Alle', ...new Set(data.menu.map((item) => item.category || 'Sonstiges'))];
     const shownMenu = data.menu.filter((item) => ui.category === 'Alle' || item.category === ui.category);
     const productCards = shownMenu.map((item) => `<div class="product-card">
@@ -220,6 +241,9 @@
         <section class="settings-card table-config"><div class="card-title"><span class="settings-icon">▦</span><div><h2>Tischanzahl</h2><p>Lege fest, wie viele Tische im Service angezeigt werden.</p></div></div>
           <form id="table-count-form" class="table-count-form"><label for="table-count">Anzahl Tische</label><div class="input-action"><input id="table-count" name="tableCount" type="number" min="1" max="60" value="${data.tableCount}" required /><button class="primary-button" type="submit">Übernehmen</button></div><small>Zwischen 1 und 60 Tischen</small></form>
         </section>
+        <section class="settings-card category-order-config"><div class="card-title"><span class="settings-icon">↕</span><div><h2>Reihenfolge auf dem Bon</h2><p>Lege fest, in welcher Reihenfolge Speisen und Getränke im laufenden Bon erscheinen.</p></div></div>
+          <ol class="category-order-list">${normalizeCategoryOrder(data.categoryOrder).map((category, index, order) => `<li class="category-order-item"><span class="category-order-position">${index + 1}</span><strong>${category}</strong><div class="category-order-actions"><button class="order-move-button" type="button" data-move-category="${category}" data-direction="up" aria-label="${category} nach oben verschieben" ${index === 0 ? 'disabled' : ''}>↑</button><button class="order-move-button" type="button" data-move-category="${category}" data-direction="down" aria-label="${category} nach unten verschieben" ${index === order.length - 1 ? 'disabled' : ''}>↓</button></div></li>`).join('')}</ol>
+        </section>
         <section class="settings-card change-config"><div class="card-title"><span class="settings-icon">€</span><div><h2>Wechselgeldrechner</h2><p>Bar erhaltenen Betrag eingeben und Rückgeld automatisch berechnen.</p></div></div>
           <label class="switch-row"><span><strong>Rechner in der Abrechnung anzeigen</strong><small>Kann jederzeit ein- oder ausgeschaltet werden.</small></span><input id="change-toggle" type="checkbox" role="switch" ${data.changeCalculatorEnabled ? 'checked' : ''} /><span class="switch-track" aria-hidden="true"></span></label>
         </section>
@@ -233,7 +257,7 @@
 
   function renderCheckout() {
     const checkout = ui.checkout;
-    const allOpen = openLines(ui.selectedTable);
+    const allOpen = orderedOpenLines(ui.selectedTable);
     const selected = checkoutLines(checkout, allOpen);
     const payableCents = selected.reduce((sum, line) => sum + cents(line.remaining), 0);
     const parts = Math.max(1, Number(checkout.parts) || 1);
@@ -264,7 +288,7 @@
     const checkedRows = Array.from(document.querySelectorAll('.line-select:checked'));
     const selectedIds = checkedRows.map((input) => input.value);
     if (mode === 'selected' && selectedIds.length === 0) return notify('Markiere zuerst mindestens einen offenen Posten.');
-    const open = openLines(ui.selectedTable);
+    const open = orderedOpenLines(ui.selectedTable);
     const initialLines = mode === 'selected' ? open.filter((line) => selectedIds.includes(line.id)) : open;
     const quantities = Object.fromEntries(checkedRows.map((input) => {
       const selectedCount = input.closest('.order-row').querySelector('.line-select-quantity');
@@ -284,7 +308,7 @@
   function settlePayment() {
     const checkout = ui.checkout;
     if (!checkout) return;
-    const open = openLines(ui.selectedTable);
+    const open = orderedOpenLines(ui.selectedTable);
     const selected = checkoutLines(checkout, open);
     const maxCents = selected.reduce((sum, line) => sum + cents(line.remaining), 0);
     let amountCents = checkout.mode === 'amount'
@@ -399,6 +423,16 @@
       render();
     } else if (target.dataset.action === 'confirm-payment') {
       settlePayment();
+    } else if (target.dataset.moveCategory) {
+      const order = normalizeCategoryOrder(data.categoryOrder);
+      const index = order.indexOf(target.dataset.moveCategory);
+      const nextIndex = index + (target.dataset.direction === 'up' ? -1 : 1);
+      if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
+      [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+      data.categoryOrder = order;
+      save();
+      render();
+      notify('Bon-Reihenfolge gespeichert.');
     } else if (target.dataset.deleteItem) {
       const itemId = target.dataset.deleteItem;
       const inUse = Object.values(data.orders).flat().some((line) => line.menuId === itemId && cents(line.remaining) > 0);
@@ -460,7 +494,7 @@
     if (!modal || !ui.checkout) return;
     const display = modal.querySelector('.checkout-total strong');
     const changeOutput = modal.querySelector('.change-result strong');
-    const open = openLines(ui.selectedTable);
+    const open = orderedOpenLines(ui.selectedTable);
     const selected = checkoutLines(ui.checkout, open);
     const due = selected.reduce((sum, line) => sum + cents(line.remaining), 0);
     const amount = ui.checkout.mode === 'amount' ? Number(ui.checkout.amount) : ui.checkout.mode === 'split' ? fromCents(Math.ceil(due / Math.max(1, Number(ui.checkout.parts) || 1))) : fromCents(due);
