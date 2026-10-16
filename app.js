@@ -27,7 +27,7 @@
   }
 
   const data = loadData();
-  const ui = { view: 'tables', selectedTable: null, category: 'Alle', booking: null, checkout: null, resetDialog: false };
+  const ui = { view: 'tables', selectedTable: null, category: 'Alle', booking: null, checkout: null, resetDialog: false, selectionCounts: {} };
   const app = document.querySelector('#app');
   const toast = document.querySelector('#toast');
   let toastTimer;
@@ -92,7 +92,7 @@
     return open
       .filter((line) => allSelected || checkout.ids.includes(line.id))
       .map((line) => {
-        const requested = allSelected ? line.units.length : Number(checkout.quantities?.[line.id] || 1);
+        const requested = allSelected ? line.units.length : Number(checkout.quantities?.[line.id] || 0);
         const units = line.units.slice(0, Math.max(1, Math.min(line.units.length, requested)));
         return { ...line, units, quantity: units.length, remaining: fromCents(units.reduce((sum, amount) => sum + amount, 0)) };
       });
@@ -200,7 +200,7 @@
         <span class="table-card-bottom"><span>${due ? `${orderCount} offene ${orderCount === 1 ? 'Position' : 'Positionen'}` : 'Noch keine Buchung'}</span><b>${due ? euro(due) : '–'}</b></span>
       </button>`;
     }).join('');
-    return `<section class="page-heading"><div><p class="eyebrow">ÜBERSICHT</p><h1>Guten Dienst.</h1><p class="heading-subtitle">Wähle einen Tisch, um Bestellungen zu buchen oder abzurechnen.</p></div><div class="heading-stat"><span class="stat-dot"></span><span>${Array.from({ length: data.tableCount }, (_, i) => totalFor(i + 1) > 0).filter(Boolean).length} Tische mit offenen Posten</span></div></section>
+    return `<section class="page-heading"><div class="heading-stat"><span class="stat-dot"></span><span>${Array.from({ length: data.tableCount }, (_, i) => totalFor(i + 1) > 0).filter(Boolean).length} Tische mit offenen Posten</span></div></section>
       <section class="table-section"><div class="section-heading"><div><h2>Alle Tische</h2><span>${data.tableCount} Tische · Tippen zum Öffnen</span></div><button class="text-button" data-view="settings">Tische verwalten <span aria-hidden="true">↗</span></button></div><div class="table-grid">${cards}</div></section>`;
   }
 
@@ -215,13 +215,16 @@
       </button>
       <button class="product-note-button" type="button" data-add-note="${escapeHtml(item.id)}" aria-label="Kommentar für ${escapeHtml(item.name)} hinzufügen"><span aria-hidden="true">✎</span> Mit Notiz</button>
     </div>`).join('');
-    const lineRows = open.map((line) => `<div class="order-row">
-      <input type="checkbox" class="line-select" value="${escapeHtml(line.id)}" aria-label="${escapeHtml(line.name)} zur Abrechnung auswählen" />
-      <span class="order-copy"><strong>${escapeHtml(line.name)}</strong><small>${line.quantity} × ${euro(line.price)}${cents(line.remaining) < cents(line.price * line.quantity) ? ` · Restwert ${euro(line.remaining)}` : ''}</small>${line.comment ? `<span class="order-comment">${escapeHtml(line.comment)}</span>` : ''}</span>
-      ${line.quantity > 1 ? `<label class="order-select-count" hidden>Anzahl <input class="line-select-quantity" type="number" min="1" max="${line.quantity}" value="1" aria-label="Anzahl ${escapeHtml(line.name)} zur Abrechnung" /></label>` : ''}
-      <b class="order-price">${euro(line.remaining)}</b>
+    const lineRows = open.map((line) => {
+      const selectedCount = Math.min(line.quantity, Math.max(0, Number(ui.selectionCounts[line.id]) || 0));
+      return `<div class="order-row ${selectedCount ? 'is-selected' : ''}">
+      <button class="order-select-button" type="button" data-select-line="${escapeHtml(line.id)}" aria-label="${escapeHtml(line.name)} für Auswahl abrechnen: ${line.quantity} noch offen${selectedCount ? `, ${selectedCount} ausgewählt` : ''}" ${selectedCount >= line.quantity ? 'disabled' : ''}>
+        <span class="order-copy"><strong>${escapeHtml(line.name)}</strong><small>${line.quantity} × ${euro(line.price)}${cents(line.remaining) < cents(line.price * line.quantity) ? ` · Restwert ${euro(line.remaining)}` : ''}</small>${line.comment ? `<span class="order-comment">${escapeHtml(line.comment)}</span>` : ''}</span>
+      </button>
+      <span class="order-amount"><span class="selection-count" ${selectedCount ? '' : 'hidden'}><button type="button" data-decrement-line="${escapeHtml(line.id)}" aria-label="Auswahl von ${escapeHtml(line.name)} um eins verringern">−</button><b aria-live="polite">${selectedCount}</b></span><b class="order-price">${euro(line.remaining)}</b></span>
       <button class="cancel-line-button" type="button" data-cancel-line="${escapeHtml(line.id)}" aria-label="Eine Portion ${escapeHtml(line.name)} stornieren" title="Eine Portion stornieren">×</button>
-    </div>`).join('');
+    </div>`;
+    }).join('');
     return `<div class="detail-top"><button class="back-button" data-action="back"><span aria-hidden="true">←</span> Alle Tische</button><span class="date-label">${new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</span></div>
       <section class="table-title-row"><div><p class="eyebrow">TISCHÜBERSICHT</p><h1>${tableName(number)}</h1><p class="heading-subtitle">Bestellungen direkt am Tisch ergänzen.</p></div><span class="table-badge ${open.length ? 'badge-open' : ''}"><i></i>${open.length ? 'Offen' : 'Noch frei'}</span></section>
       <div class="detail-layout">
@@ -234,7 +237,7 @@
           <div class="bill-footer"><div class="bill-total"><span>Offener Betrag</span><strong>${euro(totalFor(number))}</strong></div>
             <button class="primary-button full-width" data-checkout="all" ${open.length ? '' : 'disabled'}><span>Alles abrechnen</span><span aria-hidden="true">→</span></button>
             <div class="secondary-actions"><button class="secondary-button" data-checkout="selected" ${open.length ? '' : 'disabled'}>Auswahl abrechnen</button><button class="secondary-button" data-checkout="split" ${open.length ? '' : 'disabled'}>Betrag teilen</button></div>
-            <p class="bill-hint">Posten markieren; bei mehreren Stück kannst du die Auswahlmenge setzen.</p>
+            <p class="bill-hint">Artikel antippen, um sie für die Auswahl zu zählen. Das − neben der Auswahl hebt einen Tipp wieder auf.</p>
           </div>
         </aside>
       </div>`;
@@ -306,15 +309,16 @@
   }
 
   function openCheckout(mode) {
-    const checkedRows = Array.from(document.querySelectorAll('.line-select:checked'));
-    const selectedIds = checkedRows.map((input) => input.value);
+    const selectedIds = Object.entries(ui.selectionCounts)
+      .filter(([, count]) => Number(count) > 0)
+      .map(([id]) => id);
     if (mode === 'selected' && selectedIds.length === 0) return notify('Markiere zuerst mindestens einen offenen Posten.');
     const open = orderedOpenLines(ui.selectedTable);
     const initialLines = mode === 'selected' ? open.filter((line) => selectedIds.includes(line.id)) : open;
-    const quantities = Object.fromEntries(checkedRows.map((input) => {
-      const selectedCount = input.closest('.order-row').querySelector('.line-select-quantity');
-      return [input.value, mode === 'selected' ? Number(selectedCount?.value || 1) : open.find((line) => line.id === input.value)?.quantity || 1];
-    }));
+    const quantities = Object.fromEntries(initialLines.map((line) => [
+      line.id,
+      mode === 'selected' ? Math.min(line.quantity, Number(ui.selectionCounts[line.id]) || 0) : line.quantity,
+    ]));
     if (mode !== 'selected') {
       for (const line of initialLines) quantities[line.id] = line.quantity;
     }
@@ -360,6 +364,7 @@
     data.payments.push({ id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`, table: ui.selectedTable, amount: fromCents(amountCents), tip: fromCents(customerTotalCents - amountCents), method: 'Bar', at: new Date().toISOString() });
     save();
     ui.checkout = null;
+    ui.selectionCounts = {};
     notify(`${euro(fromCents(amountCents))} für ${tableName(ui.selectedTable)} gebucht.`);
     render();
   }
@@ -415,14 +420,19 @@
       ui.view = target.dataset.view;
       ui.selectedTable = null;
       ui.category = 'Alle';
+      ui.selectionCounts = {};
       render();
     } else if (target.dataset.table) {
       ui.selectedTable = Number(target.dataset.table);
       ui.category = 'Alle';
+      ui.selectionCounts = {};
       render();
     } else if (target.dataset.action === 'back' || target.dataset.action === 'close-checkout') {
       if (target.dataset.action === 'close-checkout') ui.checkout = null;
-      else ui.selectedTable = null;
+      else {
+        ui.selectedTable = null;
+        ui.selectionCounts = {};
+      }
       render();
     } else if (target.dataset.action === 'cancel-booking' || (target.dataset.action === 'booking-backdrop' && event.target === target)) {
       ui.booking = null;
@@ -442,6 +452,17 @@
       bookItem(product);
     } else if (target.dataset.addNote) {
       openBooking(target.dataset.addNote);
+    } else if (target.dataset.selectLine) {
+      const line = openLines(ui.selectedTable).find((entry) => entry.id === target.dataset.selectLine);
+      if (!line) return;
+      const selected = Math.min(line.quantity, (Number(ui.selectionCounts[line.id]) || 0) + 1);
+      ui.selectionCounts[line.id] = selected;
+      render();
+    } else if (target.dataset.decrementLine) {
+      const selected = Math.max(0, (Number(ui.selectionCounts[target.dataset.decrementLine]) || 0) - 1);
+      if (selected) ui.selectionCounts[target.dataset.decrementLine] = selected;
+      else delete ui.selectionCounts[target.dataset.decrementLine];
+      render();
     } else if (target.dataset.category) {
       ui.category = target.dataset.category;
       render();
@@ -473,6 +494,8 @@
       line.units.pop();
       line.quantity = line.units.length;
       line.remaining = fromCents(line.units.reduce((sum, amount) => sum + amount, 0));
+      ui.selectionCounts[line.id] = Math.min(Number(ui.selectionCounts[line.id]) || 0, line.quantity);
+      if (ui.selectionCounts[line.id] === 0) delete ui.selectionCounts[line.id];
       save();
       render();
       notify(`Eine Portion ${line.name} wurde storniert.`);
@@ -525,15 +548,7 @@
   });
 
   document.addEventListener('change', (event) => {
-    if (event.target.matches('.line-select')) {
-      const row = event.target.closest('.order-row');
-      const count = row.querySelector('.order-select-count');
-      if (count) count.hidden = !event.target.checked;
-      row.classList.toggle('is-selected', event.target.checked);
-    } else if (event.target.matches('.line-select-quantity')) {
-      const max = Number(event.target.max) || 1;
-      event.target.value = String(Math.max(1, Math.min(max, Number(event.target.value) || 1)));
-    } else if (event.target.id === 'change-toggle') {
+    if (event.target.id === 'change-toggle') {
       data.changeCalculatorEnabled = event.target.checked;
       save(); render();
       notify(`Wechselgeldrechner ${data.changeCalculatorEnabled ? 'aktiviert' : 'deaktiviert'}.`);
@@ -578,6 +593,7 @@
       save();
       ui.selectedTable = null;
       ui.resetDialog = false;
+      ui.selectionCounts = {};
       render();
       notify('Alle offenen Tischposten und heutigen Abrechnungen wurden zurückgesetzt.');
     } else if (event.target.id === 'booking-form') {
