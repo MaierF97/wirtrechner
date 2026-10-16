@@ -23,6 +23,10 @@
   const app = document.querySelector('#app');
   const toast = document.querySelector('#toast');
   let toastTimer;
+  let longPressTimer;
+  let longPressOrigin;
+  let longPressTriggered = false;
+  let suppressProductClick = false;
 
   const euro = (amount) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount || 0);
   const cents = (amount) => Math.round((Number(amount) + Number.EPSILON) * 100);
@@ -84,6 +88,35 @@
     toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 2600);
   }
 
+  function openBooking(itemId) {
+    if (!data.menu.some((item) => item.id === itemId)) return;
+    ui.booking = { itemId };
+    render();
+    document.querySelector('#booking-comment')?.focus();
+  }
+
+  function bookItem(product, comment = '') {
+    if (!product || !ui.selectedTable) return;
+    openLines(ui.selectedTable);
+    const lines = linesFor(ui.selectedTable);
+    const priceCents = cents(product.price);
+    const existing = lines.find((line) => line.menuId === product.id
+      && (line.comment || '') === comment
+      && line.units.length > 0
+      && line.units.every((amount) => amount === priceCents));
+    if (existing) {
+      existing.units.push(priceCents);
+      existing.quantity = existing.units.length;
+      existing.remaining = fromCents(existing.units.reduce((sum, amount) => sum + amount, 0));
+    } else {
+      lines.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, menuId: product.id, name: product.name, price: Number(product.price), quantity: 1, remaining: Number(product.price), units: [priceCents], comment });
+    }
+    data.orders[ui.selectedTable] = lines;
+    save();
+    render();
+    notify(`${product.name} zu ${tableName(ui.selectedTable)} hinzugefügt.`);
+  }
+
   function render() {
     const dailyRevenue = data.payments
       .filter((payment) => new Date(payment.at).toDateString() === new Date().toDateString())
@@ -143,8 +176,13 @@
     const open = openLines(number);
     const categories = ['Alle', ...new Set(data.menu.map((item) => item.category || 'Sonstiges'))];
     const shownMenu = data.menu.filter((item) => ui.category === 'Alle' || item.category === ui.category);
-    const productCards = shownMenu.map((item) => `<button class="product-card" data-add-item="${escapeHtml(item.id)}" ${!item.id ? 'disabled' : ''}>
-      <span class="product-category">${escapeHtml(item.category || 'Sonstiges')}</span><strong>${escapeHtml(item.name)}</strong><span class="product-card-bottom"><b>${euro(item.price)}</b><span class="add-symbol" aria-hidden="true">+</span></span></button>`).join('');
+    const productCards = shownMenu.map((item) => `<div class="product-card">
+      <button class="product-quick-area" type="button" data-add-item="${escapeHtml(item.id)}" aria-label="${escapeHtml(item.name)} direkt buchen">
+        <span class="product-category">${escapeHtml(item.category || 'Sonstiges')}</span><strong>${escapeHtml(item.name)}</strong>
+        <span class="product-card-bottom"><b>${euro(item.price)}</b><span class="add-symbol" aria-hidden="true">+</span></span>
+      </button>
+      <button class="product-note-button" type="button" data-add-note="${escapeHtml(item.id)}" aria-label="Kommentar für ${escapeHtml(item.name)} hinzufügen"><span aria-hidden="true">✎</span> Notiz</button>
+    </div>`).join('');
     const lineRows = open.map((line) => `<div class="order-row">
       <input type="checkbox" class="line-select" value="${escapeHtml(line.id)}" aria-label="${escapeHtml(line.name)} zur Abrechnung auswählen" />
       <span class="order-copy"><strong>${escapeHtml(line.name)}</strong><small>${line.quantity} × ${euro(line.price)}${cents(line.remaining) < cents(line.price * line.quantity) ? ` · Restwert ${euro(line.remaining)}` : ''}</small>${line.comment ? `<span class="order-comment">${escapeHtml(line.comment)}</span>` : ''}</span>
@@ -154,7 +192,7 @@
     return `<div class="detail-top"><button class="back-button" data-action="back"><span aria-hidden="true">←</span> Alle Tische</button><span class="date-label">${new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</span></div>
       <section class="table-title-row"><div><p class="eyebrow">TISCHÜBERSICHT</p><h1>${tableName(number)}</h1><p class="heading-subtitle">Bestellungen direkt am Tisch ergänzen.</p></div><span class="table-badge ${open.length ? 'badge-open' : ''}"><i></i>${open.length ? 'Offen' : 'Noch frei'}</span></section>
       <div class="detail-layout">
-        <section class="menu-panel"><div class="section-heading"><div><h2>Speisekarte</h2><span>Tippe auf einen Artikel zum Buchen</span></div><button class="icon-button" data-view="settings" aria-label="Speisekarte bearbeiten">⚙</button></div>
+        <section class="menu-panel"><div class="section-heading"><div><h2>Speisekarte</h2><span>Antippen zum Buchen · Notiz per Stift oder Langdruck</span></div><button class="icon-button" data-view="settings" aria-label="Speisekarte bearbeiten">⚙</button></div>
           <div class="category-tabs">${categories.map((category) => `<button class="category-tab ${category === ui.category ? 'selected' : ''}" data-category="${escapeHtml(category)}">${escapeHtml(category)}</button>`).join('')}</div>
           <div class="product-grid">${productCards || `<div class="empty-menu">Noch keine Artikel in der Speisekarte.<br /><button class="text-button" data-view="settings">Jetzt Artikel konfigurieren →</button></div>`}</div>
         </section>
@@ -278,9 +316,51 @@
     render();
   }
 
+  document.addEventListener('pointerdown', (event) => {
+    const quickButton = event.target.closest('.product-quick-area');
+    if (!quickButton) return;
+    longPressTriggered = false;
+    longPressOrigin = { x: event.clientX, y: event.clientY };
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null;
+      longPressOrigin = null;
+      longPressTriggered = true;
+      suppressProductClick = true;
+      openBooking(quickButton.dataset.addItem);
+    }, 550);
+  });
+
+  const cancelLongPress = () => {
+    const openedNote = longPressTriggered;
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+    longPressOrigin = null;
+    if (openedNote) {
+      setTimeout(() => {
+        longPressTriggered = false;
+        suppressProductClick = false;
+      }, 0);
+    }
+  };
+  document.addEventListener('pointerup', cancelLongPress);
+  document.addEventListener('pointercancel', cancelLongPress);
+  document.addEventListener('pointermove', (event) => {
+    if (!longPressTimer || !longPressOrigin) return;
+    if (Math.hypot(event.clientX - longPressOrigin.x, event.clientY - longPressOrigin.y) > 12) cancelLongPress();
+  });
+  document.addEventListener('contextmenu', (event) => {
+    if (event.target.closest('.product-quick-area')) event.preventDefault();
+  });
+
   document.addEventListener('click', (event) => {
     const target = event.target.closest('button, a, .modal-backdrop');
     if (!target) return;
+    if (suppressProductClick && target.matches('.product-quick-area')) {
+      event.preventDefault();
+      longPressTriggered = false;
+      suppressProductClick = false;
+      return;
+    }
     if (target.dataset.view) {
       ui.booking = null;
       ui.view = target.dataset.view;
@@ -303,10 +383,9 @@
       render();
     } else if (target.dataset.addItem) {
       const product = data.menu.find((item) => item.id === target.dataset.addItem);
-      if (!product) return;
-      ui.booking = { itemId: product.id };
-      render();
-      document.querySelector('#booking-comment')?.focus();
+      bookItem(product);
+    } else if (target.dataset.addNote) {
+      openBooking(target.dataset.addNote);
     } else if (target.dataset.category) {
       ui.category = target.dataset.category;
       render();
@@ -397,25 +476,8 @@
       const product = data.menu.find((item) => item.id === ui.booking?.itemId);
       if (!product || !ui.selectedTable) return;
       const comment = String(new FormData(event.target).get('comment') || '').trim();
-      openLines(ui.selectedTable);
-      const lines = linesFor(ui.selectedTable);
-      const priceCents = cents(product.price);
-      const existing = lines.find((line) => line.menuId === product.id
-        && (line.comment || '') === comment
-        && line.units.length > 0
-        && line.units.every((amount) => amount === priceCents));
-      if (existing) {
-        existing.units.push(priceCents);
-        existing.quantity = existing.units.length;
-        existing.remaining = fromCents(existing.units.reduce((sum, amount) => sum + amount, 0));
-      } else {
-        lines.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, menuId: product.id, name: product.name, price: Number(product.price), quantity: 1, remaining: Number(product.price), units: [priceCents], comment });
-      }
-      data.orders[ui.selectedTable] = lines;
-      save();
       ui.booking = null;
-      render();
-      notify(`${product.name} zu ${tableName(ui.selectedTable)} hinzugefügt.`);
+      bookItem(product, comment);
     } else if (event.target.id === 'new-item-form') {
       event.preventDefault();
       const form = new FormData(event.target);
