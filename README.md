@@ -13,7 +13,7 @@ Eine mobiloptimierte Webanwendung für den Restaurantservice. Sie läuft ohne Ba
 ## Bedienung
 
 - **Tische:** Im oberen, grünen Bereich der Artikelkachel wird ein Artikel direkt gebucht. Der farbig markierte untere Bereich **Mit Notiz** öffnet den Kommentardialog; alternativ den oberen Bereich lange drücken. Der Kommentar bleibt am jeweiligen Bonposten sichtbar.
-- **Abrechnen:** Für „Auswahl abrechnen“ eine Bonposition pro Tipp auswählen; die Auswahlzahl steht links neben dem Preis und ein Tipp auf das Minus verringert sie wieder. Die Angabe, wie viele Portionen offen sind, bleibt daneben erhalten. „Betrag teilen“ berechnet einen gleichen Anteil aus dem noch offenen Betrag.
+- **Abrechnen:** Alle offenen Posten oder die per Tipp ausgewählte Menge abrechnen. Die Auswahlzahl steht links neben dem Preis; ein Tipp auf das Minus verringert sie wieder. Die Angabe, wie viele Portionen offen sind, bleibt daneben erhalten.
 - **Zahlung:** Ausschließlich Barzahlung. Ist der Rechner aktiviert, kann der gewünschte Kundenbetrag inklusive Trinkgeld sowie das tatsächlich erhaltene Bargeld eingegeben werden. Trinkgeld und Rückgeld werden separat berechnet und Trinkgeld wird separat gespeichert.
 - **Storno:** Mit dem ×-Button am Bonposten kann nach Bestätigung jeweils eine noch offene Portion storniert werden.
 - **Reset:** In den Einstellungen können alle offenen Tischposten und die heutigen Abrechnungen gelöscht werden. Das Passwort ist der heutige Wochentag; Speisekarte, Tischanzahl und Einstellungen bleiben bestehen. Da die App statisch und lokal läuft, ist das eine Bestätigung gegen versehentliche Bedienung und keine echte Zugriffssicherung.

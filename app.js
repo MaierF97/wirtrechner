@@ -88,7 +88,7 @@
   }
 
   function checkoutLines(checkout, open) {
-    const allSelected = checkout.mode === 'all' || checkout.mode === 'split';
+    const allSelected = checkout.mode === 'all';
     return open
       .filter((line) => allSelected || checkout.ids.includes(line.id))
       .map((line) => {
@@ -236,7 +236,7 @@
           ${open.length ? `<div class="order-list">${lineRows}</div>` : `<div class="empty-order"><span class="empty-icon">＋</span><strong>Der Bon ist noch leer</strong><p>${data.menu.length ? 'Buche Speisen und Getränke über die Karte.' : 'Lege zuerst Artikel in den Einstellungen an.'}</p></div>`}
           <div class="bill-footer"><div class="bill-total"><span>Offener Betrag</span><strong>${euro(totalFor(number))}</strong></div>
             <button class="primary-button full-width" data-checkout="all" ${open.length ? '' : 'disabled'}><span>Alles abrechnen</span><span aria-hidden="true">→</span></button>
-            <div class="secondary-actions"><button class="secondary-button" data-checkout="selected" ${open.length ? '' : 'disabled'}>Auswahl abrechnen</button><button class="secondary-button" data-checkout="split" ${open.length ? '' : 'disabled'}>Betrag teilen</button></div>
+            <button class="secondary-button full-width" data-checkout="selected" ${open.length ? '' : 'disabled'}>Auswahl abrechnen</button>
             <p class="bill-hint">Artikel antippen, um sie für die Auswahl zu zählen. Das − neben der Auswahl hebt einen Tipp wieder auf.</p>
           </div>
         </aside>
@@ -279,9 +279,7 @@
     const allOpen = orderedOpenLines(ui.selectedTable);
     const selected = checkoutLines(checkout, allOpen);
     const payableCents = selected.reduce((sum, line) => sum + cents(line.remaining), 0);
-    const parts = Math.max(1, Number(checkout.parts) || 1);
-    const amountCents = checkout.mode === 'split' ? Math.ceil(payableCents / parts) : payableCents;
-    const safeAmount = fromCents(amountCents);
+    const safeAmount = fromCents(payableCents);
     const changeEnabled = data.changeCalculatorEnabled;
     const tendered = Number(checkout.tendered) || 0;
     const customerTotalInput = Number(checkout.customerTotal);
@@ -291,13 +289,12 @@
     const tip = fromCents(customerTotal - cents(safeAmount));
     const change = Math.max(0, cents(tendered) - customerTotal) / 100;
     const isValid = safeAmount > 0 && cents(safeAmount) <= payableCents && (!changeEnabled || cents(tendered) >= customerTotal);
-    const modeLabel = checkout.mode === 'all' ? 'Alles abrechnen' : checkout.mode === 'split' ? 'Betrag teilen' : 'Auswahl abrechnen';
+    const modeLabel = checkout.mode === 'all' ? 'Alles abrechnen' : 'Auswahl abrechnen';
     return `<div class="modal-backdrop" data-action="backdrop"><section class="checkout-modal" role="dialog" aria-modal="true" aria-labelledby="checkout-title" tabindex="-1">
       <div class="modal-top"><div><p class="eyebrow">${tableName(ui.selectedTable).toUpperCase()}</p><h2 id="checkout-title">${modeLabel}</h2></div><button class="close-button" data-action="close-checkout" aria-label="Schließen">×</button></div>
       <div class="checkout-items">${selected.map((line) => `<div class="checkout-line"><span>${escapeHtml(line.name)} <small>${line.quantity} × ${euro(line.price)}</small>${line.comment ? `<small class="checkout-comment">${escapeHtml(line.comment)}</small>` : ''}</span><b>${euro(line.remaining)}</b></div>`).join('') || '<p class="no-selection">Keine offenen Posten ausgewählt.</p>'}</div>
-      <div class="checkout-total"><span>${checkout.mode === 'split' ? `Anteil · ${parts} offene ${parts === 1 ? 'Person' : 'Personen'}` : 'Zu zahlen'}</span><strong>${euro(safeAmount)}</strong></div>
+      <div class="checkout-total"><span>Zu zahlen</span><strong>${euro(safeAmount)}</strong></div>
       <div class="checkout-controls">
-        ${checkout.mode === 'split' ? `<label class="field-label" for="split-parts">In wie viele gleiche Anteile teilen?</label><input id="split-parts" class="checkout-input" type="number" inputmode="numeric" min="1" max="99" value="${parts}" />` : ''}
         ${changeEnabled ? `<div class="change-box"><label class="field-label" for="customer-total">Kunde sagt (inkl. Trinkgeld, €)</label><input id="customer-total" class="checkout-input" type="number" inputmode="decimal" min="${safeAmount.toFixed(2)}" step="0.01" placeholder="z. B. ${euro(safeAmount)}" value="${checkout.customerTotal || ''}" /><small class="cash-hint">Zum Beispiel „20 €“ bei einem offenen Betrag von 18 €: 2 € Trinkgeld.</small><div class="tip-result"><span>Enthaltenes Trinkgeld</span><strong>${euro(tip)}</strong></div><label class="field-label cash-received-label" for="cash-tendered">Bargeld tatsächlich erhalten (€)</label><input id="cash-tendered" class="checkout-input" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Gegebenen Betrag eingeben" value="${checkout.tendered || ''}" /><div class="change-result"><span>Rückgeld</span><strong>${euro(change)}</strong></div></div>` : ''}
       </div>
       <div class="modal-actions"><button class="secondary-button" data-action="close-checkout">Abbrechen</button><button class="primary-button" data-action="confirm-payment" ${isValid ? '' : 'disabled'}>Zahlung buchen <span aria-hidden="true">→</span></button></div>
@@ -322,7 +319,7 @@
     const selection = { mode, ids: initialLines.map((line) => line.id), quantities };
     const selectedLines = checkoutLines(selection, initialLines);
     const total = fromCents(selectedLines.reduce((sum, line) => sum + cents(line.remaining), 0));
-    ui.checkout = { ...selection, parts: 2, customerTotal: '', tendered: '' };
+    ui.checkout = { ...selection, customerTotal: '', tendered: '' };
     render();
     document.querySelector('.checkout-modal')?.focus();
   }
@@ -333,9 +330,7 @@
     const open = orderedOpenLines(ui.selectedTable);
     const selected = checkoutLines(checkout, open);
     const maxCents = selected.reduce((sum, line) => sum + cents(line.remaining), 0);
-    const amountCents = checkout.mode === 'split'
-      ? Math.ceil(maxCents / Math.max(1, Number(checkout.parts) || 1))
-      : maxCents;
+    const amountCents = maxCents;
     if (!Number.isFinite(amountCents) || amountCents < 1 || amountCents > maxCents) return notify('Der Zahlbetrag muss innerhalb der offenen Summe liegen.');
     const customerTotalInput = checkout.customerTotal === '' ? amountCents : cents(checkout.customerTotal);
     if (!Number.isFinite(customerTotalInput)) return notify('Bitte gib einen gültigen Kundenbetrag ein.');
@@ -519,12 +514,7 @@
   document.addEventListener('input', (event) => {
     const target = event.target;
     if (!ui.checkout) return;
-    if (target.id === 'split-parts') {
-      ui.checkout.parts = Math.max(1, Number(target.value) || 1);
-      const partsLabel = document.querySelector('.checkout-total span');
-      if (partsLabel) partsLabel.textContent = `Anteil · ${ui.checkout.parts} offene ${ui.checkout.parts === 1 ? 'Person' : 'Personen'}`;
-      updateCheckoutSummary();
-    } else if (target.id === 'customer-total') {
+    if (target.id === 'customer-total') {
       ui.checkout.customerTotal = target.value;
       updateCheckoutSummary();
     } else if (target.id === 'cash-tendered') {
@@ -550,7 +540,7 @@
     const open = orderedOpenLines(ui.selectedTable);
     const selected = checkoutLines(ui.checkout, open);
     const due = selected.reduce((sum, line) => sum + cents(line.remaining), 0);
-    const amount = ui.checkout.mode === 'split' ? fromCents(Math.ceil(due / Math.max(1, Number(ui.checkout.parts) || 1))) : fromCents(due);
+    const amount = fromCents(due);
     const amountCents = cents(amount);
     const statedInput = ui.checkout.customerTotal === '' ? amountCents : cents(ui.checkout.customerTotal);
     const customerTotalCents = Math.max(amountCents, statedInput);
