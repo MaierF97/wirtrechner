@@ -1,0 +1,10 @@
+{
+  "name": "Wirtwerk – Tischabrechnung",
+  "short_name": "Wirtwerk",
+  "description": "Tische, Bestellungen und Abrechnungen verwalten.",
+  "lang": "de",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f5f4ef",
+  "theme_color": "#f5f4ef"
+}
