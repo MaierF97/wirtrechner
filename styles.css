@@ -93,6 +93,7 @@ h2 { margin: 0; font: 750 18px/1.3 Manrope, sans-serif; letter-spacing: -.4px; }
 .order-copy { min-width: 0; display: grid; gap: 4px; }
 .order-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .order-copy small { color: var(--muted); font-size: 10px; }
+.order-comment { overflow-wrap: anywhere; color: #9a6834; font-size: 10px; line-height: 1.35; }
 .order-price { margin-left: auto; padding-left: 6px; font: 700 12px Manrope, sans-serif; white-space: nowrap; }
 .empty-order { min-height: 208px; display: grid; align-content: center; justify-items: center; padding: 22px; text-align: center; }
 .empty-icon { width: 39px; height: 39px; display: grid; place-items: center; margin-bottom: 12px; border-radius: 12px; color: var(--green); background: var(--green-soft); font-size: 23px; }
@@ -170,6 +171,13 @@ h2 { margin: 0; font: 750 18px/1.3 Manrope, sans-serif; letter-spacing: -.4px; }
 .checkout-controls { display: grid; gap: 8px; }
 .checkout-controls .field-label:not(:first-child) { margin-top: 5px; }
 .checkout-input { width: 100%; min-height: 43px; }
+.booking-modal { width: min(100%, 430px); }
+.booking-price { margin: 15px 0 20px; color: var(--green); font: 800 20px Manrope, sans-serif; }
+.booking-price span { color: var(--muted); font: 400 11px 'DM Sans', sans-serif; }
+.booking-modal .field-label span { color: var(--muted); font-weight: 400; }
+.booking-comment { min-height: 88px; resize: vertical; padding: 10px 11px; line-height: 1.45; }
+.comment-hint { display: block; margin-top: -3px; color: #87918a; font-size: 10px; }
+.checkout-line .checkout-comment { color: #9a6834; line-height: 1.35; }
 .mode-switch { display: flex; justify-content: space-between; align-items: center; width: 100%; border: 1px solid #dce8df; border-radius: 9px; padding: 11px 12px; background: #f7fbf8; color: var(--green); font-size: 11px; font-weight: 700; }
 .mode-switch span { font-size: 16px; }
 .change-box { display: grid; gap: 8px; margin-top: 5px; padding: 13px; border: 1px solid #e8ece7; border-radius: 12px; background: #fafbf9; }

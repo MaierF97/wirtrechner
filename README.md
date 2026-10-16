@@ -12,7 +12,7 @@ Eine mobiloptimierte Webanwendung für den Restaurantservice. Sie läuft ohne Ba
 
 ## Bedienung
 
-- **Tische:** Tisch öffnen, Artikel auf der Speisekarte antippen und so zum Bon hinzufügen.
+- **Tische:** Tisch öffnen, Artikel antippen und optional einen Kommentar wie „ohne Zwiebeln“ oder „mit stillem Wasser“ ergänzen. Der Kommentar bleibt am jeweiligen Bonposten sichtbar.
 - **Abrechnen:** Alle offenen Posten, markierte Posten oder einen frei eingegebenen Teilbetrag abrechnen. „Betrag teilen“ berechnet einen gleichen Anteil aus dem noch offenen Betrag.
 - **Zahlung:** Ausschließlich Barzahlung. Der optionale Wechselgeldrechner zeigt bei Eingabe des erhaltenen Betrags das Rückgeld an.
 - **Einstellungen:** Tischanzahl ändern, Speisen und Getränke anlegen, bearbeiten oder löschen und den Wechselgeldrechner ein- oder ausschalten.

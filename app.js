@@ -19,7 +19,7 @@
   }
 
   const data = loadData();
-  const ui = { view: 'tables', selectedTable: null, category: 'Alle', checkout: null };
+  const ui = { view: 'tables', selectedTable: null, category: 'Alle', booking: null, checkout: null };
   const app = document.querySelector('#app');
   const toast = document.querySelector('#toast');
   let toastTimer;
@@ -74,8 +74,22 @@
           <button class="nav-item ${ui.view === 'tables' ? 'active' : ''}" data-view="tables"><span class="nav-icon">▦</span><span>Tische</span></button>
           <button class="nav-item ${ui.view === 'settings' ? 'active' : ''}" data-view="settings"><span class="nav-icon">⚙</span><span>Einstellungen</span></button>
         </nav>
+        ${ui.booking ? renderBooking() : ''}
         ${ui.checkout ? renderCheckout() : ''}
       </div>`;
+  }
+
+  function renderBooking() {
+    const item = data.menu.find((entry) => entry.id === ui.booking?.itemId);
+    if (!item) return '';
+    return `<div class="modal-backdrop" data-action="booking-backdrop"><form id="booking-form" class="checkout-modal booking-modal" role="dialog" aria-modal="true" aria-labelledby="booking-title">
+      <div class="modal-top"><div><p class="eyebrow">${tableName(ui.selectedTable).toUpperCase()} · NEUE BUCHUNG</p><h2 id="booking-title">${escapeHtml(item.name)}</h2></div><button class="close-button" type="button" data-action="cancel-booking" aria-label="Schließen">×</button></div>
+      <p class="booking-price">${euro(item.price)} <span>pro Portion</span></p>
+      <label class="field-label" for="booking-comment">Besonderheiten oder Wünsche <span>(optional)</span></label>
+      <textarea id="booking-comment" name="comment" class="checkout-input booking-comment" maxlength="140" rows="3" placeholder="z. B. ohne Zwiebeln, Schorle mit stillem Wasser"></textarea>
+      <small class="comment-hint">Der Kommentar erscheint direkt beim offenen Posten.</small>
+      <div class="modal-actions"><button class="secondary-button" type="button" data-action="cancel-booking">Abbrechen</button><button class="primary-button" type="submit">Artikel buchen <span aria-hidden="true">→</span></button></div>
+    </form></div>`;
   }
 
   function renderTables() {
@@ -102,7 +116,7 @@
       <span class="product-category">${escapeHtml(item.category || 'Sonstiges')}</span><strong>${escapeHtml(item.name)}</strong><span class="product-card-bottom"><b>${euro(item.price)}</b><span class="add-symbol" aria-hidden="true">+</span></span></button>`).join('');
     const lineRows = open.map((line) => `<label class="order-row">
       <input type="checkbox" class="line-select" value="${escapeHtml(line.id)}" aria-label="${escapeHtml(line.name)} zur Abrechnung auswählen" />
-      <span class="order-copy"><strong>${escapeHtml(line.name)}</strong><small>${line.quantity} × ${euro(line.price)}${cents(line.remaining) < cents(line.price * line.quantity) ? ` · Restwert ${euro(line.remaining)}` : ''}</small></span>
+      <span class="order-copy"><strong>${escapeHtml(line.name)}</strong><small>${line.quantity} × ${euro(line.price)}${cents(line.remaining) < cents(line.price * line.quantity) ? ` · Restwert ${euro(line.remaining)}` : ''}</small>${line.comment ? `<span class="order-comment">${escapeHtml(line.comment)}</span>` : ''}</span>
       <b class="order-price">${euro(line.remaining)}</b>
     </label>`).join('');
     return `<div class="detail-top"><button class="back-button" data-action="back"><span aria-hidden="true">←</span> Alle Tische</button><span class="date-label">${new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</span></div>
@@ -165,7 +179,7 @@
     const modeLabel = checkout.mode === 'all' ? 'Alles abrechnen' : checkout.mode === 'split' ? 'Betrag teilen' : checkout.mode === 'amount' ? 'Teilbetrag abrechnen' : 'Auswahl abrechnen';
     return `<div class="modal-backdrop" data-action="backdrop"><section class="checkout-modal" role="dialog" aria-modal="true" aria-labelledby="checkout-title" tabindex="-1">
       <div class="modal-top"><div><p class="eyebrow">${tableName(ui.selectedTable).toUpperCase()}</p><h2 id="checkout-title">${modeLabel}</h2></div><button class="close-button" data-action="close-checkout" aria-label="Schließen">×</button></div>
-      <div class="checkout-items">${selected.map((line) => `<div class="checkout-line"><span>${escapeHtml(line.name)} <small>${line.quantity} × ${euro(line.price)}</small></span><b>${euro(line.remaining)}</b></div>`).join('') || '<p class="no-selection">Keine offenen Posten ausgewählt.</p>'}</div>
+      <div class="checkout-items">${selected.map((line) => `<div class="checkout-line"><span>${escapeHtml(line.name)} <small>${line.quantity} × ${euro(line.price)}</small>${line.comment ? `<small class="checkout-comment">${escapeHtml(line.comment)}</small>` : ''}</span><b>${euro(line.remaining)}</b></div>`).join('') || '<p class="no-selection">Keine offenen Posten ausgewählt.</p>'}</div>
       <div class="checkout-total"><span>${checkout.mode === 'split' ? `Anteil · ${parts} offene ${parts === 1 ? 'Person' : 'Personen'}` : 'Zu zahlen'}</span><strong>${euro(safeAmount)}</strong></div>
       <div class="checkout-controls">
         ${checkout.mode === 'split' ? `<label class="field-label" for="split-parts">In wie viele gleiche Anteile teilen?</label><input id="split-parts" class="checkout-input" type="number" min="1" max="99" value="${parts}" />` : ''}
@@ -223,6 +237,7 @@
     const target = event.target.closest('button, a, .modal-backdrop');
     if (!target) return;
     if (target.dataset.view) {
+      ui.booking = null;
       ui.view = target.dataset.view;
       ui.selectedTable = null;
       ui.category = 'Alle';
@@ -235,24 +250,18 @@
       if (target.dataset.action === 'close-checkout') ui.checkout = null;
       else ui.selectedTable = null;
       render();
+    } else if (target.dataset.action === 'cancel-booking' || (target.dataset.action === 'booking-backdrop' && event.target === target)) {
+      ui.booking = null;
+      render();
     } else if (target.dataset.action === 'backdrop' && event.target === target) {
       ui.checkout = null;
       render();
     } else if (target.dataset.addItem) {
       const product = data.menu.find((item) => item.id === target.dataset.addItem);
       if (!product) return;
-      const lines = linesFor(ui.selectedTable);
-      const existing = lines.find((line) => line.menuId === product.id && cents(line.remaining) === cents(line.price * line.quantity));
-      if (existing) {
-        existing.quantity += 1;
-        existing.remaining = fromCents(cents(existing.remaining) + cents(product.price));
-      } else {
-        lines.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, menuId: product.id, name: product.name, price: Number(product.price), quantity: 1, remaining: Number(product.price) });
-      }
-      data.orders[ui.selectedTable] = lines;
-      save();
+      ui.booking = { itemId: product.id };
       render();
-      notify(`${product.name} zu ${tableName(ui.selectedTable)} hinzugefügt.`);
+      document.querySelector('#booking-comment')?.focus();
     } else if (target.dataset.category) {
       ui.category = target.dataset.category;
       render();
@@ -278,6 +287,11 @@
   });
 
   document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && ui.booking) {
+      ui.booking = null;
+      render();
+      return;
+    }
     if (event.key === 'Escape' && ui.checkout) {
       ui.checkout = null;
       render();
@@ -325,7 +339,25 @@
   }
 
   document.addEventListener('submit', (event) => {
-    if (event.target.id === 'new-item-form') {
+    if (event.target.id === 'booking-form') {
+      event.preventDefault();
+      const product = data.menu.find((item) => item.id === ui.booking?.itemId);
+      if (!product || !ui.selectedTable) return;
+      const comment = String(new FormData(event.target).get('comment') || '').trim();
+      const lines = linesFor(ui.selectedTable);
+      const existing = lines.find((line) => line.menuId === product.id && (line.comment || '') === comment && cents(line.remaining) === cents(line.price * line.quantity));
+      if (existing) {
+        existing.quantity += 1;
+        existing.remaining = fromCents(cents(existing.remaining) + cents(product.price));
+      } else {
+        lines.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, menuId: product.id, name: product.name, price: Number(product.price), quantity: 1, remaining: Number(product.price), comment });
+      }
+      data.orders[ui.selectedTable] = lines;
+      save();
+      ui.booking = null;
+      render();
+      notify(`${product.name} zu ${tableName(ui.selectedTable)} hinzugefügt.`);
+    } else if (event.target.id === 'new-item-form') {
       event.preventDefault();
       const form = new FormData(event.target);
       const name = String(form.get('name') || '').trim();
