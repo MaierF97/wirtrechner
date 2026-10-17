@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wirtwerk-shell-v10';
+const CACHE_NAME = 'wirtwerk-shell-v11';
 const SHELL = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {

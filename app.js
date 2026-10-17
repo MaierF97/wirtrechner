@@ -27,7 +27,7 @@
   }
 
   const data = loadData();
-  const ui = { view: 'tables', selectedTable: null, category: 'Alle', booking: null, checkout: null, resetDialog: false, selectionCounts: {} };
+  const ui = { view: 'tables', selectedTable: null, category: 'Alle', booking: null, checkout: null, resetDialog: false, dailyReport: false, selectionCounts: {} };
   const app = document.querySelector('#app');
   const toast = document.querySelector('#toast');
   let toastTimer;
@@ -150,7 +150,7 @@
             <span class="brand-mark" aria-hidden="true">w.</span>
             <span class="brand-copy"><strong>Wirtwerk</strong><small>Tischabrechnung</small></span>
           </a>
-          <div class="topbar-meta"><span class="service-pill"><i></i> Service läuft</span><span class="daily-total"><small>Heute abgerechnet</small><strong>${euro(dailyRevenue)}</strong></span></div>
+          <div class="topbar-meta"><span class="service-pill"><i></i> Service läuft</span><button class="daily-total" type="button" data-action="show-daily-report" aria-label="Tagesabrechnung anzeigen"><small>Heute abgerechnet</small><strong>${euro(dailyRevenue)}</strong></button></div>
         </header>
         <main class="main-content">
           ${ui.view === 'settings' ? renderSettings() : renderTables()}
@@ -162,7 +162,52 @@
         ${ui.booking ? renderBooking() : ''}
         ${ui.checkout ? renderCheckout() : ''}
         ${ui.resetDialog ? renderResetDialog() : ''}
+        ${ui.dailyReport ? renderDailyReport() : ''}
       </div>`;
+  }
+
+  function renderDailyReport() {
+    const today = new Date().toDateString();
+    const payments = data.payments.filter((payment) => new Date(payment.at).toDateString() === today);
+    const articleTotalCents = payments.reduce((sum, payment) => sum + cents(payment.amount || 0), 0);
+    const tipTotalCents = payments.reduce((sum, payment) => sum + cents(payment.tip || 0), 0);
+    const totalCents = articleTotalCents + tipTotalCents;
+    const products = new Map();
+    let paymentsWithoutItems = 0;
+
+    for (const payment of payments) {
+      if (!Array.isArray(payment.items) || payment.items.length === 0) {
+        if (cents(payment.amount || 0) > 0) paymentsWithoutItems += 1;
+        continue;
+      }
+      for (const item of payment.items) {
+        const key = `${item.category || 'Sonstiges'}\u0000${item.name}`;
+        const current = products.get(key) || { name: item.name, category: item.category || 'Sonstiges', quantity: 0, amountCents: 0 };
+        current.quantity += Number(item.quantity) || 0;
+        current.amountCents += Number(item.amountCents) || 0;
+        products.set(key, current);
+      }
+    }
+
+    const categoryOrder = normalizeCategoryOrder(data.categoryOrder);
+    const categoryRank = new Map(categoryOrder.map((category, index) => [category, index]));
+    const productRows = [...products.values()]
+      .sort((a, b) => (categoryRank.get(a.category) ?? categoryOrder.length) - (categoryRank.get(b.category) ?? categoryOrder.length) || a.name.localeCompare(b.name, 'de'))
+      .map((item) => `<div class="report-item"><span class="report-item-name"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.category)} · ${item.quantity} ${item.quantity === 1 ? 'Portion' : 'Portionen'}</small></span><b>${euro(fromCents(item.amountCents))}</b></div>`)
+      .join('');
+
+    const legacyNotice = paymentsWithoutItems
+      ? `<p class="report-note">${paymentsWithoutItems === 1 ? 'Bei einer älteren Abrechnung sind die Artikeldetails nicht verfügbar.' : `Bei ${paymentsWithoutItems} älteren Abrechnungen sind die Artikeldetails nicht verfügbar.`} Diese Umsätze und Trinkgelder sind in den Summen enthalten.</p>`
+      : '';
+
+    return `<div class="modal-backdrop report-backdrop" data-action="report-backdrop"><section class="checkout-modal report-modal" role="dialog" aria-modal="true" aria-labelledby="daily-report-title">
+      <div class="modal-top"><div><p class="eyebrow">TAGESABSCHLUSS · ${new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date())}</p><h2 id="daily-report-title">Heute abgerechnet</h2></div><button class="close-button" type="button" data-action="close-daily-report" aria-label="Schließen">×</button></div>
+      <div class="report-totals"><div class="report-total-row"><span>Artikelumsatz</span><strong>${euro(fromCents(articleTotalCents))}</strong></div><div class="report-total-row tip-total"><span>Trinkgeld</span><strong>${euro(fromCents(tipTotalCents))}</strong></div><div class="report-total-row grand-total"><span>Gesamt eingenommen</span><strong>${euro(fromCents(totalCents))}</strong></div></div>
+      <div class="report-section-title"><h3>Abgerechnete Artikel</h3><span>${products.size}</span></div>
+      <div class="report-items">${productRows || '<p class="report-empty">Heute sind noch keine Artikeldetails vorhanden.</p>'}</div>
+      ${legacyNotice}
+      <div class="modal-actions report-actions"><button class="primary-button full-width" type="button" data-action="close-daily-report">Schließen</button></div>
+    </section></div>`;
   }
 
   function renderResetDialog() {
@@ -351,7 +396,20 @@
       line.remaining = fromCents(line.units.reduce((sum, amount) => sum + amount, 0));
       if (outstanding === 0) break;
     }
-    data.payments.push({ id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`, table: ui.selectedTable, amount: fromCents(amountCents), tip: fromCents(customerTotalCents - amountCents), method: 'Bar', at: new Date().toISOString() });
+    data.payments.push({
+      id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+      table: ui.selectedTable,
+      amount: fromCents(amountCents),
+      tip: fromCents(customerTotalCents - amountCents),
+      items: selected.map((line) => ({
+        name: line.name,
+        category: line.category || data.menu.find((item) => item.id === line.menuId)?.category || 'Sonstiges',
+        quantity: line.units.length,
+        amountCents: line.units.reduce((sum, unitAmount) => sum + unitAmount, 0),
+      })),
+      method: 'Bar',
+      at: new Date().toISOString(),
+    });
     save();
     ui.checkout = null;
     ui.selectionCounts = {};
@@ -407,6 +465,7 @@
     if (target.dataset.view) {
       ui.booking = null;
       ui.resetDialog = false;
+      ui.dailyReport = false;
       ui.view = target.dataset.view;
       ui.selectedTable = null;
       ui.category = 'Alle';
@@ -431,6 +490,12 @@
       ui.resetDialog = true;
       render();
       document.querySelector('#reset-password')?.focus();
+    } else if (target.dataset.action === 'show-daily-report') {
+      ui.dailyReport = true;
+      render();
+    } else if (target.dataset.action === 'close-daily-report' || (target.dataset.action === 'report-backdrop' && event.target === target)) {
+      ui.dailyReport = false;
+      render();
     } else if (target.dataset.action === 'cancel-reset' || (target.dataset.action === 'reset-backdrop' && event.target === target)) {
       ui.resetDialog = false;
       render();
@@ -495,6 +560,11 @@
   });
 
   document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && ui.dailyReport) {
+      ui.dailyReport = false;
+      render();
+      return;
+    }
     if (event.key === 'Escape' && ui.resetDialog) {
       ui.resetDialog = false;
       render();
